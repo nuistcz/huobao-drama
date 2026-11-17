@@ -8,6 +8,7 @@ import { AUDIO_MAX_BYTES, AudioUploadError, saveAudioUpload } from '../utils/aud
 import { getAbsolutePath } from '../utils/storage.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { generateImage } from '../services/generation.js'
+import { characterReferences, withCharacterReference } from '../services/character-image-reference.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
@@ -103,6 +104,25 @@ app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
   const updates: Record<string, any> = { updatedAt: now() }
+  if ('video_appearance_lock' in body) {
+    const lock = body.video_appearance_lock
+    if (lock !== null && (typeof lock !== 'string' || lock.length > 500)) return badRequest(c, '视频外观约束最多 500 字符')
+    updates.videoAppearanceLock = lock || null
+  }
+  if ('video_reference_image_url' in body) {
+    const url = body.video_reference_image_url
+    if (url !== null && (typeof url !== 'string' || !/^static\/(uploads|images)\/[^/\\]+\.(png|jpe?g|webp)$/i.test(url))) return badRequest(c, '视频参考图路径无效')
+    updates.videoReferenceImageUrl = url
+    // A replacement portrait must not inherit a costume description from the old portrait.
+    if (!('video_appearance_lock' in body)) updates.videoAppearanceLock = null
+  }
+  if ('reference_images' in body) {
+    const refs = body.reference_images
+    if (!Array.isArray(refs) || refs.length > 1 || refs.some((v: unknown) => typeof v !== 'string' || !/^static\/uploads\/[^/\\]+\.(png|jpe?g|webp)$/i.test(v))) {
+      return badRequest(c, '请上传一张 JPG、PNG 或 WebP 角色参考图')
+    }
+    updates.referenceImages = refs.length ? JSON.stringify(refs) : null
+  }
   for (const key of ['name', 'role', 'description', 'appearance', 'styling', 'imageUrl', 'localPath']) {
     const snakeKey = key.replace(/[A-Z]/g, m => '_' + m.toLowerCase())
     if (snakeKey in body) updates[key] = body[snakeKey]
@@ -135,10 +155,11 @@ app.post('/:id/generate-image', async (c) => {
 
   const stylePrompt = await getDramaStylePrompt(char.dramaId)
   const finalPrompt = await ensureCharacterFinalPrompt(char, ep.id, false, { model: body.text_model, configId: body.text_config_id ?? undefined })
-  const prompt = finalPrompt || characterImagePrompt(char, stylePrompt)
+  const referenceImages = characterReferences(char.referenceImages)
+  const prompt = withCharacterReference(finalPrompt || characterImagePrompt(char, stylePrompt), referenceImages)
   try {
     logTaskStart('CharacterImage', 'generate', { characterId: id, episodeId: ep.id, dramaId: char.dramaId })
-    const genId = await generateImage({ characterId: id, dramaId: char.dramaId, prompt, model: body.model, size: CHARACTER_IMAGE_SIZE, configId: body.config_id ?? ep.imageConfigId ?? undefined })
+    const genId = await generateImage({ characterId: id, dramaId: char.dramaId, prompt, referenceImages, model: body.model, size: CHARACTER_IMAGE_SIZE, configId: body.config_id ?? ep.imageConfigId ?? undefined })
     logTaskSuccess('CharacterImage', 'generate', { characterId: id, generationId: genId })
     return success(c, { image_generation_id: genId })
   } catch (err: any) {
@@ -181,9 +202,10 @@ app.post('/batch-generate-images', async (c) => {
     const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, cid))
     if (!char) continue
     const finalPrompt = await ensureCharacterFinalPrompt(char, ep.id, false, { model: body.text_model, configId: body.text_config_id ?? undefined })
-    const prompt = finalPrompt || characterImagePrompt(char, stylePrompt)
+    const referenceImages = characterReferences(char.referenceImages)
+    const prompt = withCharacterReference(finalPrompt || characterImagePrompt(char, stylePrompt), referenceImages)
     try {
-      const genId = await generateImage({ characterId: cid, dramaId: char.dramaId, prompt, model: body.model, size: CHARACTER_IMAGE_SIZE, configId: body.config_id ?? ep.imageConfigId ?? undefined })
+      const genId = await generateImage({ characterId: cid, dramaId: char.dramaId, prompt, referenceImages, model: body.model, size: CHARACTER_IMAGE_SIZE, configId: body.config_id ?? ep.imageConfigId ?? undefined })
       results.push(genId)
     } catch {}
   }

@@ -361,6 +361,8 @@
                     <span class="afp-label">{{ t('episode.asset.finalPromptTurnaround') }}</span>
                     <span :class="['afp-text', !(c.final_prompt || c.finalPrompt) && 'dim']">{{ c.final_prompt || c.finalPrompt || t('episode.asset.finalPromptAutoTurnaround') }}</span>
                   </div>
+                  <CharacterReference :character="c" @updated="updateCharacterReference" />
+                  <CharacterReference :character="c" video @updated="updateCharacterVideoReference" />
                   <CharacterVoice :character="c" @updated="updateCharacterVoice" />
                 </div>
               </article>
@@ -1152,6 +1154,8 @@
                     <strong>{{ assetDetail.type === 'character' ? (assetDetail.item.role || t('common.role')) : assetDetail.type === 'prop' ? (assetDetail.item.type || t('common.prop')) : (assetDetail.item.time || t('episode.asset.noTime')) }}</strong>
                   </div>
                 </div>
+                <CharacterReference v-if="assetDetail.type === 'character'" :key="assetDetail.item.id" :character="assetDetail.item" @updated="updateCharacterReference" />
+                <CharacterReference v-if="assetDetail.type === 'character'" :character="assetDetail.item" video @updated="updateCharacterVideoReference" />
                 <CharacterVoice v-if="assetDetail.type === 'character'" :key="assetDetail.item.id" :character="assetDetail.item" @updated="updateCharacterVoice" />
               </aside>
 
@@ -1455,6 +1459,7 @@ import {
   Plus, X, ListTodo, CircleHelp,
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
+import { buildH3ReferencePrompt } from '~/utils/h3-reference-prompt.mjs'
 import { startTour, autoTour } from '~/composables/useTour'
 import { useAgent } from '~/composables/useAgent'
 import { resolveTextModelSelection } from '~/utils/text-model-selection'
@@ -1654,6 +1659,18 @@ async function toggleExportDone() {
   }
 }
 const assetDetail = ref({ open: false, type: '', item: null })
+function updateCharacterVideoReference(id, url) {
+  const patch = { video_reference_image_url: url, videoReferenceImageUrl: url, video_appearance_lock: null, videoAppearanceLock: null }
+  const character = chars.value.find(item => item.id === id)
+  if (character) Object.assign(character, patch)
+  if (assetDetail.value.type === 'character' && assetDetail.value.item?.id === id) Object.assign(assetDetail.value.item, patch)
+}
+function updateCharacterReference(id, references) {
+  const patch = { reference_images: references, referenceImages: references }
+  const character = chars.value.find(item => item.id === id)
+  if (character) Object.assign(character, patch)
+  if (assetDetail.value.type === 'character' && assetDetail.value.item?.id === id) Object.assign(assetDetail.value.item, patch)
+}
 function updateCharacterVoice(id, voice) {
   const patch = { ...voice, voiceAudioUrl: voice.voice_audio_url, voiceAudioName: voice.voice_audio_name }
   const character = chars.value.find(item => item.id === id)
@@ -3137,6 +3154,9 @@ function formatHistoryTime(iso) {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+function characterVideoReference(char) {
+  return char?.video_reference_image_url || char?.videoReferenceImageUrl || char?.image_url || char?.imageUrl
+}
 function getShotReferenceImages(sb) {
   const refs = []
   const pushRef = (value) => {
@@ -3146,7 +3166,7 @@ function getShotReferenceImages(sb) {
   const scene = getStoryboardScene(sb)
   pushRef(scene?.image_url || scene?.imageUrl)
   for (const char of getStoryboardCharacters(sb)) {
-    pushRef(char?.image_url || char?.imageUrl)
+    pushRef(characterVideoReference(char))
   }
   for (const prop of getStoryboardProps(sb)) {
     pushRef(prop?.image_url || prop?.imageUrl)
@@ -3159,7 +3179,7 @@ function getShotReferenceImages(sb) {
 function shotBindableAssets(sb) {
   const out = []
   for (const char of visualChars.value) {
-    const imageUrl = char.image_url || char.imageUrl || ''
+    const imageUrl = characterVideoReference(char) || ''
     out.push({
       key: `character-${char.id}`,
       id: char.id,
@@ -3285,7 +3305,7 @@ function getShotReferenceIndexMap(sb) {
   const scene = getStoryboardScene(sb)
   push(scene?.location || '', scene?.image_url || scene?.imageUrl)
   for (const char of getStoryboardCharacters(sb)) {
-    push(char.name || '', char?.image_url || char?.imageUrl)
+    push(char.name || '', characterVideoReference(char))
   }
   for (const prop of getStoryboardProps(sb)) {
     push(prop.name || '', prop?.image_url || prop?.imageUrl)
@@ -3301,7 +3321,7 @@ function resolveVideoPromptRefs(sb) {
   const map = getShotReferenceIndexMap(sb)
   const names = Object.keys(map).sort((a, b) => b.length - a.length)
   if (!names.length) return prompt
-  return prompt.replace(/@([^\s@#]+)/g, (m, raw) => {
+  const resolved = prompt.replace(/@([^\s@#]+)/g, (m, raw) => {
     for (const name of names) {
       if (raw.startsWith(name)) {
         return `@图片${map[name]}${name}${raw.slice(name.length)}`
@@ -3309,6 +3329,17 @@ function resolveVideoPromptRefs(sb) {
     }
     return m
   })
+  if (!bareModelName(videoModel.value).toLowerCase().startsWith('minimax-h3')) return resolved
+  const scene = getStoryboardScene(sb)
+  const definitions = []
+  if (scene && map[scene.location]) definitions.push({ kind: 'scene', name: scene.location, index: map[scene.location] })
+  for (const char of getStoryboardCharacters(sb)) {
+    if (map[char.name]) definitions.push({ kind: 'character', name: char.name, index: map[char.name], appearanceLock: char.video_appearance_lock || char.videoAppearanceLock, singleView: !!(char.video_reference_image_url || char.videoReferenceImageUrl) })
+  }
+  for (const prop of getStoryboardProps(sb)) {
+    if (map[prop.name]) definitions.push({ kind: 'prop', name: prop.name, index: map[prop.name] })
+  }
+  return buildH3ReferencePrompt(resolved, definitions)
 }
 
 // 分镜时长（视频生成参数区直接编辑并保存到分镜）：

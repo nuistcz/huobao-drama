@@ -385,9 +385,9 @@ export function initSqliteSchema(sqlite: Database.Database) {
   for (const [name, type] of Object.entries({ config_id: 'INTEGER', config_base_url: 'TEXT', stage: 'TEXT', error_code: 'TEXT' })) {
     if (!taskColumns.has(name)) sqlite.exec(`ALTER TABLE sys_task ADD COLUMN ${name} ${type}`)
   }
-  // 角色音色由用户上传；旧库补充可空字段，不修改已有角色和图片。
+  // 角色音色、独立视频参考图与外观约束；旧库补充可空字段，保留已有角色和图片。
   const characterColumns = new Set((sqlite.prepare('PRAGMA table_info(characters)').all() as { name: string }[]).map(c => c.name))
-  for (const name of ['voice_audio_url', 'voice_audio_name']) {
+  for (const name of ['voice_audio_url', 'voice_audio_name', 'video_reference_image_url', 'video_appearance_lock']) {
     if (!characterColumns.has(name)) sqlite.exec(`ALTER TABLE characters ADD COLUMN ${name} TEXT`)
   }
   const insertSeed = sqlite.prepare(SEED_SQL)
