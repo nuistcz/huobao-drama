@@ -1,5 +1,7 @@
 # 🎬 Huobao Drama — AI 短剧生成平台 / AI Short Drama Generation Platform
 
+> **此 fork 的本地生成扩展 / Local generation extensions:** ComfyUI + MiniMax-H3（6 步 Turbo / Kitchen attention）、Qwen Image 2.1 Turbo / Noct Q V4 / Z-Image Turbo、角色照片参考、独立视频单人参考图与跨镜头外观约束。改动说明、模型清单、安装配置、性能记录和已知限制见 [本地 ComfyUI 使用指南](local-comfy/README.md)。上游许可证与署名保持不变。
+
 <div align="center">
 
 **基于 TypeScript 全栈的 AI 短剧自动化生产平台**<br>

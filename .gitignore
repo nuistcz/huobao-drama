@@ -58,3 +58,15 @@ desktop/build/
 desktop/dist/
 desktop/release/
 desktop/resources/
+
+# Local ComfyUI runtime, experiments and machine-specific settings
+local-comfy/logs/
+local-comfy/benchmarks/
+local-comfy/*.local.psd1
+local-comfy/requirements-before-*.txt
+local-comfy/requirements-comfy*.txt
+local-comfy/resume-paused-videos.py
+resume-paused-videos.cmd
+__pycache__/
+*.safetensors
+*.partial
