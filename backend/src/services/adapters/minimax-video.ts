@@ -22,6 +22,7 @@ import type {
   VideoPollResponse,
 } from './types'
 import { joinProviderUrl } from './url'
+import { isLocalH3 } from '../h3-prompt-format.js'
 
 /** 仅支持 MiniMax-H3 系列（前缀匹配，兼容未来 H3.x 变体） */
 const H3_MODEL_PREFIX = 'minimax-h3'
@@ -89,6 +90,11 @@ export class MiniMaxVideoAdapter implements VideoProviderAdapter {
       content,
       duration: this.normalizeDuration(record.duration),
       resolution: this.normalizeResolution(record.resolution),
+    }
+    // The local bridge exposes a reproducible seed extension; leave hosted API requests unchanged.
+    if (isLocalH3(config.baseUrl, model) && record.seed != null) {
+      if (!Number.isSafeInteger(record.seed) || record.seed < 0) throw new Error('seed 须为非负安全整数')
+      body.seed = record.seed
     }
 
     // 图生视频（有首帧）ratio 恒为 adaptive，省略；文生视频 ratio 必填

@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { buildGraph } from './bridge.mjs';
 
 const body = { model: 'MiniMax-H3', duration: 5, resolution: '768P', content: [{ type: 'text', text: 'A quiet garden.' }] };
+test('preserves explicit seed including zero for reproducible comparisons', () => {
+  for (const seed of [0, 20261118, 164641315565487]) assert.equal(buildGraph({...body,seed})['8'].inputs.noise_seed,seed);
+  for (const seed of [-1, 1.5, '123', Number.MAX_SAFE_INTEGER+1]) assert.throws(()=>buildGraph({...body,seed}),/seed/);
+});
 test('all H3 modes sample through the selected attention backend after Turbo LoRA', () => {
   for (const refs of [[], [{type:'image_url',role:'reference_image',file:'a.png'}]]) {
     const g = buildGraph(body, refs);

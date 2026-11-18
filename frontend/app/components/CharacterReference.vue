@@ -1,12 +1,15 @@
 <template>
-  <section class="character-reference" aria-label="角色参考照片" @click.stop @keydown.stop>
+  <section class="character-reference" :aria-label="referenceTitle" @click.stop @keydown.stop>
     <div class="reference-heading">
       <strong>{{ video ? '视频单人参考图' : '角色参考照片' }}</strong>
       <button type="button" class="btn btn-sm" :disabled="busy" @click="fileInput?.click()">{{ busy ? '保存中…' : referenceUrl ? '替换照片' : '上传参考照片' }}</button>
       <input ref="fileInput" hidden type="file" accept="image/jpeg,image/png,image/webp" :disabled="busy" aria-label="上传角色参考照片" @change="upload" />
     </div>
     <div v-if="referenceUrl" class="reference-preview">
-      <img :src="referenceUrl" alt="角色参考照片" />
+      <button type="button" class="reference-image-button" :aria-label="`放大预览${referenceTitle}`" @click="emit('preview', referenceUrl, referenceTitle)">
+        <img :src="referenceUrl" :alt="referenceTitle" />
+        <span>点击放大</span>
+      </button>
       <button type="button" class="btn btn-sm" :disabled="busy" @click="save([])">移除参考图</button>
     </div>
     <template v-if="video">
@@ -25,8 +28,9 @@
 import { toast } from 'vue-sonner'
 import { characterAPI, uploadAPI } from '~/composables/useApi'
 import { toastError } from '~/composables/useToast'
-const props = defineProps<{ video?: boolean; character: { id: number; reference_images?: string | null; referenceImages?: string | null; video_reference_image_url?: string | null; videoReferenceImageUrl?: string | null; video_appearance_lock?: string | null; videoAppearanceLock?: string | null } }>()
-const emit = defineEmits<{ updated: [id: number, references: string | null] }>()
+const props = defineProps<{ video?: boolean; character: { id: number; name?: string; reference_images?: string | null; referenceImages?: string | null; video_reference_image_url?: string | null; videoReferenceImageUrl?: string | null; video_appearance_lock?: string | null; videoAppearanceLock?: string | null } }>()
+const emit = defineEmits<{ updated: [id: number, references: string | null]; preview: [src: string, title: string] }>()
+const referenceTitle = computed(() => `${props.character.name || '角色'} · ${props.video ? '视频单人参考图' : '角色参考照片'}`)
 const fileInput = ref<HTMLInputElement | null>(null)
 const busyIds = useState<number[]>('character-reference-busy', () => [])
 const busy = computed(() => busyIds.value.includes(props.character.id))
@@ -71,5 +75,8 @@ async function upload(event: Event) {
 .reference-heading strong { font-size: 12px; color: var(--text-1); }
 .reference-preview { justify-content: flex-start; margin-top: 10px; }
 .reference-preview img { width: 72px; height: 88px; object-fit: contain; border-radius: 6px; background: var(--bg-2); }
+.reference-image-button { display: grid; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-2); cursor: zoom-in; }
+.reference-image-button span { font-size: 10px; }
+.reference-image-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 p { margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: var(--text-3); }
 </style>

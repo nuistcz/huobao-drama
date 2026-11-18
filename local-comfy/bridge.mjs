@@ -30,6 +30,7 @@ export function buildGraph(body, media = []) {
   const sizes = { '16:9': [1344,768], '9:16': [768,1344], '1:1': [960,960], '4:3': [1152,864], '3:4': [864,1152], '21:9': [1536,672] };
   const [width,height] = body.ratio ? (sizes[body.ratio] || sizes['16:9']) : (endpoints[0]?.size || sizes['16:9']);
   const duration = Number(body.duration || 5);
+  if (body.seed != null && (!Number.isSafeInteger(body.seed) || body.seed < 0)) throw new Error('seed 须为非负安全整数');
   if (!Number.isFinite(duration) || duration < 4 || duration > 15) throw new Error('时长须在 4–15 秒之间');
   const length = Math.ceil((duration * 24 - 5) / 17) * 17 + 5;
   const graph = {
@@ -40,7 +41,7 @@ export function buildGraph(body, media = []) {
     '5': node(refs.length ? 'MiniMaxH3ReferenceToVideo' : 'MiniMaxH3ImageToVideo', { clip: ['2',0], vae: ['3',0], prompt, width, height, length }),
     '6': node('BasicScheduler', { model: ['29',0], scheduler: 'simple', steps: 6, denoise: 1 }),
     '7': node('MiniMaxH3TurboSampler', {}),
-    '8': node('RandomNoise', { noise_seed: randomInt(2 ** 48 - 1) }),
+    '8': node('RandomNoise', { noise_seed: body.seed ?? randomInt(2 ** 48 - 1) }),
     '9': node('BasicGuider', { model: ['29',0], conditioning: ['5',0] }),
     '10': node('SamplerCustomAdvanced', { noise: ['8',0], guider: ['9',0], sampler: ['7',0], sigmas: ['6',0], latent_image: ['5',1] }),
     '11': node('VAEDecode', { samples: ['10',0], vae: ['3',0] }),

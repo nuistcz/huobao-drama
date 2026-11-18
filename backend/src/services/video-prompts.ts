@@ -44,7 +44,7 @@ export async function startVideoPromptBatch(
   let videoLabel = '默认'
   if (ep?.videoConfigId) {
     const [cfg] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, ep.videoConfigId))
-    if (cfg) videoLabel = `${cfg.name} (${cfg.provider})`
+    if (cfg) videoLabel = `${cfg.name} (${cfg.provider}; models: ${cfg.model || ''})`
   }
 
   const task: VideoPromptBatchStatus = {

@@ -257,6 +257,8 @@
                     <span class="afp-label">{{ t('episode.asset.finalPromptTurnaround') }}</span>
                     <span :class="['afp-text', !m.finalPrompt && 'dim']">{{ m.finalPrompt || t('episode.asset.finalPromptAutoTurnaround') }}</span>
                   </div>
+                  <CharacterReference :character="m" @updated="updateCharacterReference" @preview="openReferenceViewer" />
+                  <CharacterReference :character="m" video @updated="updateCharacterVideoReference" @preview="openReferenceViewer" />
                   <CharacterVoice :character="m" @updated="updateCharacterVoice" />
                 </div>
               </article>
@@ -384,6 +386,8 @@
                     <strong>{{ editTarget.kindKey === 'character' ? (editTarget.role || t('common.role')) : editTarget.kindKey === 'prop' ? (editTarget.type || t('common.prop')) : (editTarget.time || t('episode.asset.noTime')) }}</strong>
                   </div>
                 </div>
+                <CharacterReference v-if="editTarget.kindKey === 'character'" :character="editTarget" @updated="updateCharacterReference" @preview="openReferenceViewer" />
+                <CharacterReference v-if="editTarget.kindKey === 'character'" :character="editTarget" video @updated="updateCharacterVideoReference" @preview="openReferenceViewer" />
                 <CharacterVoice v-if="editTarget.kindKey === 'character'" :key="editTarget.id" :character="editTarget" @updated="updateCharacterVoice" />
               </aside>
 
@@ -510,17 +514,7 @@
       </div>
 
       <!-- 图片查看器 -->
-      <div v-if="assetViewer.open" class="overlay viewer-overlay" @click.self="closeAssetViewer">
-        <div class="dialog viewer-dialog">
-          <div class="viewer-head">
-            <span class="viewer-title">{{ assetViewer.title }}</span>
-            <button class="btn btn-icon btn-sm btn-ghost" @click="closeAssetViewer">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <img :src="assetViewer.src" :alt="assetViewer.title" class="viewer-img" />
-        </div>
-      </div>
+      <ImagePreviewDialog :src="assetViewer.open ? assetViewer.src : ''" :title="assetViewer.title" @close="closeAssetViewer" />
     </div>
 
     <div v-if="addDialog" class="overlay" @click.self="addDialog = false">
@@ -832,6 +826,9 @@ function uploadMaterial(m) {
 function openAssetViewer(m) {
   assetViewer.value = { open: true, src: assetSrc(m), title: `${m.kind} · ${m.name}` }
 }
+function openReferenceViewer(src, title) {
+  if (src) assetViewer.value = { open: true, src, title }
+}
 function closeAssetViewer() {
   assetViewer.value = { open: false, src: '', title: '' }
 }
@@ -847,6 +844,17 @@ function fmtDate(s) {
 const editDialog = ref(false)
 const editSaving = ref(false)
 const editTarget = ref(null)
+function patchCharacterReference(id, patch) {
+  const character = drama.value?.characters?.find(item => item.id === id)
+  if (character) Object.assign(character, patch)
+  if (editTarget.value?.kindKey === 'character' && editTarget.value.id === id) Object.assign(editTarget.value, patch)
+}
+function updateCharacterReference(id, references) {
+  patchCharacterReference(id, { reference_images: references, referenceImages: references })
+}
+function updateCharacterVideoReference(id, url) {
+  patchCharacterReference(id, { video_reference_image_url: url, videoReferenceImageUrl: url, video_appearance_lock: null, videoAppearanceLock: null })
+}
 function updateCharacterVoice(id, voice) {
   const patch = { ...voice, voiceAudioUrl: voice.voice_audio_url, voiceAudioName: voice.voice_audio_name }
   const character = drama.value?.characters?.find(item => item.id === id)

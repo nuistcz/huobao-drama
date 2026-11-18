@@ -9,6 +9,8 @@ import { getAbsolutePath } from '../utils/storage.js'
 import { downloadVideo, safeTaskError } from './video-download.js'
 import { prepareReferenceAudio, resolveReferenceAudioUrls } from './reference-audio.js'
 import { getActiveConfig, getConfigById } from './ai.js'
+import { compileH3ReferencePrompt, h3ReferenceMetadata } from './h3-prompt.js'
+import { H3_PROMPT_VERSION, isLocalH3 } from './h3-prompt-format.js'
 import { now } from '../utils/response.js'
 import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
@@ -246,6 +248,25 @@ async function processTask(id: number, config: AIConfig) {
       }))
     } else {
       const adapter = getVideoAdapter(config.provider)
+      let videoPrompt = record.prompt
+      if (config.provider === 'minimax' && isLocalH3(config.baseUrl, record.model)
+        && params.referenceImageUrls?.length && !params.firstFrameUrl && !params.lastFrameUrl && !params.imageUrl) {
+        if (!params.h3CompiledPrompt || params.h3PromptVersion !== H3_PROMPT_VERSION) {
+          await db.update(schema.sysTask).set({stage:'preparing_prompt',updatedAt:now()}).where(eq(schema.sysTask.id,id))
+          const references = await h3ReferenceMetadata(params.referenceImageUrls, record.storyboardId ?? undefined)
+          params.h3CompiledPrompt = await compileH3ReferencePrompt({
+            source:record.prompt || '', references, duration:Math.min(15,Math.max(4,Math.round(params.duration || 5))),
+            videoCount:params.referenceVideoUrls?.length || 0, audioCount:params.referenceAudioUrls?.length || 0,
+          })
+          params.h3PromptVersion = H3_PROMPT_VERSION
+          // Polling and completion share this record; keep its snapshot current so
+          // saving the final duration cannot overwrite the compiled prompt.
+          record.params = JSON.stringify(params)
+          await db.update(schema.sysTask).set({params:record.params,stage:'submitting',updatedAt:now()}).where(eq(schema.sysTask.id,id))
+          logTaskProgress(label, 'h3-prompt-ready', {id,version:H3_PROMPT_VERSION,chars:params.h3CompiledPrompt.length})
+        }
+        videoPrompt = params.h3CompiledPrompt
+      }
       const resolvedImageUrl = await normalizeVideoReferenceUrl(params.imageUrl)
       const resolvedFirstFrameUrl = await normalizeVideoReferenceUrl(params.firstFrameUrl)
       const resolvedLastFrameUrl = await normalizeVideoReferenceUrl(params.lastFrameUrl)
@@ -257,7 +278,7 @@ async function processTask(id: number, config: AIConfig) {
       ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
         id: record.id,
         model: record.model,
-        prompt: record.prompt,
+        prompt: videoPrompt,
         referenceMode: params.referenceMode,
         imageUrl: resolvedImageUrl,
         firstFrameUrl: resolvedFirstFrameUrl,

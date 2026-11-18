@@ -361,8 +361,8 @@
                     <span class="afp-label">{{ t('episode.asset.finalPromptTurnaround') }}</span>
                     <span :class="['afp-text', !(c.final_prompt || c.finalPrompt) && 'dim']">{{ c.final_prompt || c.finalPrompt || t('episode.asset.finalPromptAutoTurnaround') }}</span>
                   </div>
-                  <CharacterReference :character="c" @updated="updateCharacterReference" />
-                  <CharacterReference :character="c" video @updated="updateCharacterVideoReference" />
+                  <CharacterReference :character="c" @updated="updateCharacterReference" @preview="openImageViewer" />
+                  <CharacterReference :character="c" video @updated="updateCharacterVideoReference" @preview="openImageViewer" />
                   <CharacterVoice :character="c" @updated="updateCharacterVoice" />
                 </div>
               </article>
@@ -1154,8 +1154,8 @@
                     <strong>{{ assetDetail.type === 'character' ? (assetDetail.item.role || t('common.role')) : assetDetail.type === 'prop' ? (assetDetail.item.type || t('common.prop')) : (assetDetail.item.time || t('episode.asset.noTime')) }}</strong>
                   </div>
                 </div>
-                <CharacterReference v-if="assetDetail.type === 'character'" :key="assetDetail.item.id" :character="assetDetail.item" @updated="updateCharacterReference" />
-                <CharacterReference v-if="assetDetail.type === 'character'" :character="assetDetail.item" video @updated="updateCharacterVideoReference" />
+                <CharacterReference v-if="assetDetail.type === 'character'" :key="assetDetail.item.id" :character="assetDetail.item" @updated="updateCharacterReference" @preview="openImageViewer" />
+                <CharacterReference v-if="assetDetail.type === 'character'" :character="assetDetail.item" video @updated="updateCharacterVideoReference" @preview="openImageViewer" />
                 <CharacterVoice v-if="assetDetail.type === 'character'" :key="assetDetail.item.id" :character="assetDetail.item" @updated="updateCharacterVoice" />
               </aside>
 
@@ -1313,19 +1313,7 @@
         </section>
       </div>
 
-      <div v-if="imageViewer.open && imageViewer.src" class="overlay image-viewer-overlay" @click.self="closeImageViewer">
-        <div class="dialog image-viewer-dialog">
-          <div class="image-viewer-head">
-            <div class="image-viewer-title">{{ imageViewer.title || t('episode.viewer.imagePreview') }}</div>
-            <button class="btn btn-ghost btn-icon" @click="closeImageViewer">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <div class="image-viewer-body">
-            <img :src="imageViewer.src" :alt="imageViewer.title || t('episode.viewer.imagePreview')" class="image-viewer-img" />
-          </div>
-        </div>
-      </div>
+      <ImagePreviewDialog :src="imageViewer.open ? imageViewer.src : ''" :title="imageViewer.title" @close="closeImageViewer" />
 
       <div v-if="previewShot" class="overlay image-viewer-overlay" @click.self="previewShot = null">
         <div class="dialog image-viewer-dialog merge-viewer-dialog">
@@ -1459,7 +1447,7 @@ import {
   Plus, X, ListTodo, CircleHelp,
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
-import { buildH3ReferencePrompt } from '~/utils/h3-reference-prompt.mjs'
+import { buildH3ReferencePrompt, resolveNamedReferenceMarkers } from '~/utils/h3-reference-prompt.mjs'
 import { startTour, autoTour } from '~/composables/useTour'
 import { useAgent } from '~/composables/useAgent'
 import { resolveTextModelSelection } from '~/utils/text-model-selection'
@@ -3321,14 +3309,7 @@ function resolveVideoPromptRefs(sb) {
   const map = getShotReferenceIndexMap(sb)
   const names = Object.keys(map).sort((a, b) => b.length - a.length)
   if (!names.length) return prompt
-  const resolved = prompt.replace(/@([^\s@#]+)/g, (m, raw) => {
-    for (const name of names) {
-      if (raw.startsWith(name)) {
-        return `@图片${map[name]}${name}${raw.slice(name.length)}`
-      }
-    }
-    return m
-  })
+  const resolved = resolveNamedReferenceMarkers(prompt, map)
   if (!bareModelName(videoModel.value).toLowerCase().startsWith('minimax-h3')) return resolved
   const scene = getStoryboardScene(sb)
   const definitions = []
